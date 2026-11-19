@@ -62,6 +62,19 @@ a{color:var(--act)}
 .rt .small{font-size:11px}
 .pill{font-size:12px;background:var(--b1);padding:5px 9px;border-radius:10px;white-space:nowrap;flex-shrink:0}
 .pill.warn{background:#3A2A12;color:#F0C674}
+.small.debt,.debt{color:#F0C674}
+.debtline{margin:8px 16px 0;padding:0 16px;min-height:44px;border-radius:12px;background:#3A2A12;border:0;color:#F0C674;display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 14px Inter,sans-serif;cursor:pointer;flex-shrink:0}
+.debtline .dv{display:flex;align-items:center;gap:2px;font-family:Oswald,sans-serif;font-size:17px}
+.switch{width:52px;height:32px;border-radius:16px;border:0;padding:3px;cursor:pointer;display:flex;justify-content:flex-start;background:#3A3530;flex-shrink:0}
+.switch span{width:26px;height:26px;border-radius:13px;background:var(--tx);display:block}
+.switch.on{background:var(--ac);justify-content:flex-end}
+.debtcard{display:flex;align-items:center;gap:12px;padding:14px;border-color:#6B5320;background:#2A2112}
+.debtcard .btn{width:auto;min-height:46px;font-size:15px}
+.drow{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 0;border-bottom:1px solid var(--b1)}
+.drow:last-child{border-bottom:0}
+.dmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;background:none;border:0;color:var(--tx);text-align:left;padding:4px 12px;cursor:pointer}
+.drow .dv{font-family:Oswald,sans-serif;font-size:18px;font-weight:600;color:#F0C674;white-space:nowrap}
+.paybtn{min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--b2);background:var(--s2);color:var(--tx);font:600 13px Inter,sans-serif;cursor:pointer;white-space:nowrap}
 .empty{padding:18px;border:1px dashed var(--b2);border-radius:14px;text-align:center;color:var(--mu);font-size:14px;line-height:1.5;flex-shrink:0}
 .linkbtn{background:none;border:0;color:var(--act);font-weight:600;cursor:pointer;padding:10px;font-size:14px;min-height:44px}
 .bnav{flex-shrink:0;border-top:1px solid var(--b1);background:var(--side);display:flex;align-items:flex-start;justify-content:space-around;padding:10px 0 calc(10px + env(safe-area-inset-bottom))}
@@ -296,7 +309,7 @@ var IC={
 var S={raw:{},list:[],byId:{},byDay:{},ready:false,fail:'',view:'cal',wmode:'week',sel:todayK(),cursor:null,selId:null,sheet:null,archQ:'',archF:0,busy:false,lastBackup:0,hideInstall:false};
 S.cursor=new Date();S.cursor=new Date(S.cursor.getFullYear(),S.cursor.getMonth(),1);
 var drag=null, suppressClick=false, pendingRender=false, confirmFn=null, pendingReload=false, reloading=false;
-var APP_VERSION='4';
+var APP_VERSION='5';
 
 var isWide=function(){return window.innerWidth>=760&&window.innerHeight>=600;};
 var showPanel=function(){return window.innerWidth>=1100;};
@@ -329,7 +342,7 @@ function putMany(list){return tx('appts','readwrite',function(s){list.forEach(fu
 function setMeta(k,v){return tx('meta','readwrite',function(s){return s.put(v,k);});}
 function getMeta(k){return tx('meta','readonly',function(s){return s.get(k);});}
 
-function norm(d){return {id:d.id,name:d.name||'',contact:d.contact||'',date:d.date||'',start:d.start||'00:00',dur:+d.dur||1,motif:d.motif||'',part:d.part||'',price:d.price!=null?d.price:(d.deposit==null?null:d.deposit),done:!!d.done,amount:d.amount==null?null:d.amount,pay:d.pay==null?null:d.pay,note:d.note||''};}
+function norm(d){return {id:d.id,name:d.name||'',contact:d.contact||'',date:d.date||'',start:d.start||'00:00',dur:+d.dur||1,motif:d.motif||'',part:d.part||'',price:d.price!=null?d.price:(d.deposit==null?null:d.deposit),done:!!d.done,amount:d.amount==null?null:d.amount,pay:d.pay==null?null:d.pay,note:d.note||'',debt:+d.debt>0?+d.debt:null};}
 function refresh(){
   var list=Object.keys(S.raw).map(function(k){return norm(S.raw[k]);}).filter(function(a){return a.date;});
   list.sort(function(a,b){var x=a.date+a.start,y=b.date+b.start;return x<y?-1:x>y?1:0;});
@@ -338,7 +351,7 @@ function refresh(){
   S.list=list;S.byId=byId;S.byDay=byDay;
   if(drag&&drag.active){pendingRender=true;return;}
   renderBase();
-  if(S.sheet&&S.sheet.kind==='detail')renderSheet();
+  if(S.sheet&&(S.sheet.kind==='detail'||S.sheet.kind==='debts'))renderSheet();
 }
 
 function init(){
@@ -346,11 +359,12 @@ function init(){
   renderBase();
   idbOpen().then(function(db){
     idb=db;
-    return Promise.all([tx('appts','readonly',function(s){return s.getAll();}),getMeta('lastBackup')]);
+    return Promise.all([tx('appts','readonly',function(s){return s.getAll();}),getMeta('lastBackup'),getMeta('lastDebtNotice')]);
   }).then(function(r){
     (r[0]||[]).forEach(function(a){S.raw[a.id]=a;});
-    S.lastBackup=+r[1]||0;S.ready=true;refresh();
+    S.lastBackup=+r[1]||0;S.lastDebtNotice=+r[2]||0;S.ready=true;refresh();checkDebts();
   }).catch(function(){S.fail='nostore';S.ready=true;renderBase();});
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')checkDebts();});
   if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(function(){});}
   if('serviceWorker' in navigator&&location.protocol==='https:'){
     var hadCtrl=!!navigator.serviceWorker.controller;
@@ -364,6 +378,37 @@ function init(){
       reloading=true;location.reload();
     });
   }
+}
+
+/* ---------- tartozások ---------- */
+var DEBT_DAYS=7;
+function openDebts(){return S.list.filter(function(a){return a.debt>0;});}
+function debtSum(l){return l.reduce(function(s,a){return s+(+a.debt||0);},0);}
+function checkDebts(){
+  if(!S.ready||S.fail||!idb||S.sheet||drag)return;
+  if(!openDebts().length)return;
+  if(Date.now()-(S.lastDebtNotice||0)<DEBT_DAYS*864e5)return;
+  S.lastDebtNotice=Date.now();setMeta('lastDebtNotice',S.lastDebtNotice).catch(function(){});
+  S.sheet={kind:'debts',auto:true};renderSheet();
+}
+function debtLine(){
+  var l=openDebts();if(!l.length)return '';
+  return '<button class="debtline" data-act="debts"><span>'+l.length+' ügyfél tartozik</span><span class="dv">'+money(debtSum(l))+' '+IC.right+'</span></button>';
+}
+function markPaid(id){
+  var cur=S.raw[id];if(!cur)return;
+  var add=+cur.debt||0,a=Object.assign({},cur,{amount:(+cur.amount||0)+add,debt:null});
+  putAppt(a).then(function(){toast('Kifizetve – '+money(add)+' hozzáadva a kapott összeghez.');},function(){toast('Nem sikerült menteni.');});
+}
+function debtsHTML(){
+  var l=openDebts().slice().sort(function(a,b){return a.date<b.date?-1:1;});
+  var h='<div class="panel" role="dialog" aria-modal="true" aria-label="Tartozások"><div class="shead"><button class="hbtn" data-act="close">Bezárás</button><div class="ttl">Tartozások</div><span class="hbtn"></span></div><div class="sbody">';
+  if(!l.length)return h+'<div class="empty">Senki nem tartozik.</div><button class="btn" data-act="close">Rendben</button></div></div>';
+  if(S.sheet.auto)h+='<div class="card info">Heti emlékeztető: ezek az ügyfelek még nem fizettek ki mindent.</div>';
+  h+='<div class="card abox">'+l.map(function(a){return '<div class="drow"><button class="dmain" data-act="open" data-id="'+esc(a.id)+'"><span class="n">'+esc(a.name||'Névtelen')+'</span><span class="d">'+fmtFull(a.date)+(descOf(a)?' · '+esc(descOf(a)):'')+'</span></button><span class="dv">'+money(a.debt)+'</span><button class="paybtn" data-act="debt-paid" data-id="'+esc(a.id)+'">Kifizette</button></div>';}).join('')+'</div>';
+  h+='<div class="card kv"><span class="k">Összesen</span><span class="v" style="font-family:Oswald,sans-serif;font-size:20px">'+money(debtSum(l))+'</span></div>';
+  h+='<button class="btn" data-act="close">Rendben</button><p class="hint">Amíg van tartozás, az app hetente egyszer magától is megmutatja ezt a listát.</p>';
+  return h+'</div></div>';
 }
 
 /* ---------- banners ---------- */
@@ -403,7 +448,7 @@ function dayHeadHTML(){
 }
 function itemHTML(a){
   var right;
-  if(a.done)right='<span class="rt"><span class="n">'+money(a.amount)+'</span><span class="small">'+(a.pay!=null&&PAYS[a.pay]?PAYS[a.pay]:'kész')+'</span></span>';
+  if(a.done)right='<span class="rt"><span class="n">'+money(a.amount)+'</span>'+(a.debt>0?'<span class="small debt">tartozik '+money(a.debt)+'</span>':'<span class="small">'+(a.pay!=null&&PAYS[a.pay]?PAYS[a.pay]:'kész')+'</span>')+'</span>';
   else if(isPast(a))right='<span class="pill warn">Lezáratlan</span>';
   else right='<span class="pill">'+durTxt(a.dur)+'</span>';
   return '<button class="item'+(a.done?' done':'')+'" data-act="open" data-id="'+esc(a.id)+'"><span class="t">'+esc(a.start)+'</span><span class="bar"></span><span class="mid"><span class="n">'+esc(a.name||'Névtelen')+'</span><span class="d">'+esc(descOf(a)||'—')+'</span></span>'+right+'</button>';
@@ -418,7 +463,7 @@ function bnav(){
   return '<nav class="bnav" aria-label="Fő menü"><button class="tab'+(S.view==='cal'?' on':'')+'" data-act="go-cal"'+(S.view==='cal'?' aria-current="page"':'')+'>'+IC.cal+'Naptár</button><button class="fab" data-act="new" aria-label="Új időpont">'+IC.plus+'</button><button class="tab'+(S.view==='arch'?' on':'')+'" data-act="go-arch"'+(S.view==='arch'?' aria-current="page"':'')+'>'+IC.grid+'Archívum</button></nav>';
 }
 function archHTML(){
-  var labels=['Mind','Ez a hónap','Idén'];
+  var labels=['Mind','Ez a hónap','Idén','Tartozik'];
   return '<div class="arch-h"><h1>Archívum</h1></div><div class="arch-ctl"><label class="card search">'+IC.search18+'<span class="sr">Keresés</span><input id="archQ" type="search" value="'+esc(S.archQ)+'" placeholder="Név, motívum, testrész…" autocomplete="off" enterkeyhint="search"></label>'+
     '<div class="fchips" role="group" aria-label="Időszak">'+labels.map(function(l,i){return '<button class="fchip'+(S.archF===i?' on':'')+'" data-act="archf" data-i="'+i+'" aria-pressed="'+(S.archF===i)+'">'+l+'</button>';}).join('')+'</div></div>'+
     '<div class="list" id="archRes">'+archResults()+'</div>';
@@ -427,20 +472,20 @@ function archResults(){
   if(!S.ready)return '<div class="empty">Betöltés…</div>';
   var q=S.archQ.trim().toLowerCase(),now=new Date(),ym=now.getFullYear()+'-'+pad(now.getMonth()+1),yy=String(now.getFullYear());
   var all=S.list.filter(function(a){return a.done;});
-  var rows=all.filter(function(a){return S.archF===1?a.date.slice(0,7)===ym:S.archF===2?a.date.slice(0,4)===yy:true;})
+  var rows=all.filter(function(a){return S.archF===1?a.date.slice(0,7)===ym:S.archF===2?a.date.slice(0,4)===yy:S.archF===3?a.debt>0:true;})
     .filter(function(a){return !q||[a.name,a.motif,a.part,a.contact,a.note].join(' ').toLowerCase().indexOf(q)>=0;}).reverse();
-  if(!rows.length)return '<div class="empty">'+(all.length?'Nincs találat.':'Még nincs kész tetoválás.<br>Ha egy időpontnál a „Kész” gombbal elmented az összeget, itt jelenik meg.')+'</div>';
+  if(!rows.length)return '<div class="empty">'+(S.archF===3&&!q?'Senki nem tartozik.':all.length?'Nincs találat.':'Még nincs kész tetoválás.<br>Ha egy időpontnál a „Kész” gombbal elmented az összeget, itt jelenik meg.')+'</div>';
   var groups=[],cur=null;
   rows.forEach(function(a){var k=a.date.slice(0,7);if(!cur||cur.k!==k){cur={k:k,rows:[],sum:0};groups.push(cur);}cur.rows.push(a);cur.sum+=+a.amount||0;});
   return groups.map(function(g){var d=pd(g.k+'-01');
     return '<section class="agroup"><div class="agh"><h2>'+cap(MONTHS[d.getMonth()])+' '+d.getFullYear()+'</h2><span class="small">'+g.rows.length+' tetoválás · '+money(g.sum)+'</span></div><div class="card abox">'+
-      g.rows.map(function(a){var dd=pd(a.date);return '<button class="arow" data-act="open" data-id="'+esc(a.id)+'"><span class="adate" aria-hidden="true"><b>'+dd.getDate()+'</b>'+MSH[dd.getMonth()]+'</span><span class="mid"><span class="n">'+esc(a.name||'Névtelen')+'</span><span class="d">'+esc(descOf(a)||'—')+'</span></span><span class="rt"><span class="n">'+money(a.amount)+'</span><span class="small">'+fmtShort(a.date)+'</span></span></button>';}).join('')+
+      g.rows.map(function(a){var dd=pd(a.date);return '<button class="arow" data-act="open" data-id="'+esc(a.id)+'"><span class="adate" aria-hidden="true"><b>'+dd.getDate()+'</b>'+MSH[dd.getMonth()]+'</span><span class="mid"><span class="n">'+esc(a.name||'Névtelen')+'</span><span class="d">'+esc(descOf(a)||'—')+'</span></span><span class="rt"><span class="n">'+money(a.amount)+'</span>'+(a.debt>0?'<span class="small debt">tartozik '+money(a.debt)+'</span>':'<span class="small">'+fmtShort(a.date)+'</span>')+'</span></button>';}).join('')+
       '</div></section>';}).join('');
 }
 function phoneHTML(){
   if(S.view==='arch')return '<div class="app">'+banner()+archHTML()+bnav()+'</div>';
   return '<div class="app"><div class="hdr"><div class="logo">caliber_ink_studio</div><div class="btns"><button class="iconbtn" data-act="backup" aria-label="Biztonsági mentés">'+IC.save+'</button><button class="iconbtn" data-act="go-arch" aria-label="Keresés">'+IC.search+'</button></div></div>'+banner()+
-    monthHTML(false)+incomeHTML()+dayHeadHTML()+'<div class="list" id="dayList">'+dayListHTML()+'</div>'+bnav()+'</div>';
+    monthHTML(false)+incomeHTML()+debtLine()+dayHeadHTML()+'<div class="list" id="dayList">'+dayListHTML()+'</div>'+bnav()+'</div>';
 }
 
 /* ---------- wide ---------- */
@@ -480,7 +525,7 @@ function weekHTML(){
     banner()+'<div class="whead">'+head+'</div><div class="wscroll" id="wscroll"><div class="wgrid" id="wgrid" style="height:'+(TOP*2+(h1-h0)*HOUR)+'px">'+lines+cols+now+blocks+'</div></div>';
 }
 function monthMainHTML(){
-  return '<div class="wbar"><div></div>'+segHTML()+'</div>'+banner()+'<div class="mwrap">'+monthHTML(false)+incomeHTML()+dayHeadHTML()+'<div class="list" id="dayList">'+dayListHTML()+'</div></div>';
+  return '<div class="wbar"><div></div>'+segHTML()+'</div>'+banner()+'<div class="mwrap">'+monthHTML(false)+incomeHTML()+debtLine()+dayHeadHTML()+'<div class="list" id="dayList">'+dayListHTML()+'</div></div>';
 }
 function rpanelHTML(){
   var a=S.selId&&S.byId[S.selId];
@@ -519,7 +564,7 @@ function renderBase(){
 function renderSheet(){
   var st=S.sheet,el=$('#sheet');
   if(!st){el.innerHTML='';return;}
-  var html=st.kind==='edit'?editHTML():st.kind==='done'?doneHTML():st.kind==='backup'?backupHTML():detailHTML();
+  var html=st.kind==='edit'?editHTML():st.kind==='done'?doneHTML():st.kind==='backup'?backupHTML():st.kind==='debts'?debtsHTML():detailHTML();
   el.innerHTML='<div class="sheet">'+html+'</div>';
 }
 function closeSheet(){S.sheet=null;renderSheet();if(pendingReload&&!reloading){reloading=true;location.reload();}}
@@ -601,20 +646,30 @@ function doneHTML(){
     '<section class="sec"><h2>Kapott összeg</h2><div class="card amountbox"><label class="amount"><span class="sr">Kapott összeg euróban</span><input data-f="amount" value="'+esc(d.amount)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="eur">€</span></label>'+
       '<div class="small" style="font-size:13px">'+(a.price!=null?'Megbeszélt végösszeg: '+money(a.price):'A teljes összeg, amit kaptál.')+'</div>'+
       '<div class="chips eq" id="payChips" role="group" aria-label="Fizetés módja">'+payChips()+'</div></div></section>'+
+    '<section class="sec"><div class="group" id="debtBox">'+debtBoxHTML()+'</div><p class="hint">Ha még nem fizetett ki mindent: a kapott összeghez azt írd, amit már megkaptál, ide pedig, amennyivel tartozik. Hetente egyszer szól az app, amíg nincs kifizetve.</p></section>'+
     '<section class="sec"><h2>Megjegyzés (nem kötelező)</h2><label class="card col" style="display:block"><span class="sr">Megjegyzés</span><textarea data-f="note" rows="5" placeholder="pl. festékek, tűk, utókezelés, következő ülés…">'+esc(d.note)+'</textarea></label></section>'+
     '<button class="btn" data-act="save-done">Mentés</button></div></div>';
+}
+function debtBoxHTML(){
+  var d=S.sheet.draft,on=!!d.debtOn;
+  var h='<div class="row"><span class="lb" style="width:auto;flex:1;color:var(--tx);font-size:15px" id="debtL">Még tartozik</span><button class="switch'+(on?' on':'')+'" data-act="debt-toggle" aria-pressed="'+on+'" aria-labelledby="debtL"><span></span></button></div>';
+  if(on)h+='<label class="row"><span class="lb">Tartozás</span><input data-f="debt" id="debtIn" value="'+esc(d.debt)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="unit">€</span></label>';
+  return h;
 }
 function openDone(id){
   var a=S.byId[id]||{};
   var amt=a.amount!=null?a.amount:a.price;
-  S.sheet={kind:'done',draft:{id:id,amount:amt==null?'':String(amt).replace('.',','),pay:a.pay==null?0:a.pay,note:a.note||''}};
+  S.sheet={kind:'done',draft:{id:id,amount:amt==null?'':String(amt).replace('.',','),pay:a.pay==null?0:a.pay,note:a.note||'',debtOn:a.debt>0,debt:a.debt>0?String(a.debt).replace('.',','):''}};
   renderSheet();
 }
 function saveDone(){
   if(S.busy)return;
   var d=S.sheet.draft,cur=S.raw[d.id];
   if(!cur){toast('Ez az időpont már nincs meg.');closeSheet();return;}
-  var a=Object.assign({},cur,{done:true,amount:numOrNull(d.amount),pay:d.pay,note:d.note.trim()});
+  var debt=d.debtOn?numOrNull(d.debt):null;
+  if(d.debtOn&&!(debt>0)){toast('Írd be, mennyivel tartozik.');var di=$('#debtIn');if(di)di.focus();return;}
+  var a=Object.assign({},cur,{done:true,amount:numOrNull(d.amount),pay:d.pay,note:d.note.trim(),debt:debt});
+  if(debt>0&&!S.lastDebtNotice){S.lastDebtNotice=Date.now();setMeta('lastDebtNotice',S.lastDebtNotice).catch(function(){});}
   S.busy=true;
   putAppt(a).then(function(){S.busy=false;toast('Elmentve.');openDetail(d.id);},function(){S.busy=false;toast('Nem sikerült menteni. Próbáld újra.');});
 }
@@ -631,6 +686,7 @@ function detailHTML(){
     '<div class="dtitle"><h1>'+esc(a.name||'Névtelen')+'</h1><div style="font-size:15px;color:var(--mu)">'+esc(descOf(a)||'—')+'</div>'+(a.contact?'<div class="small" style="font-size:13px">'+esc(a.contact)+'</div>':'')+'</div>'+
     '<div class="facts"><div class="card fact"><span class="small">Dátum</span><span class="v">'+fmtFull(a.date)+'</span></div><div class="card fact"><span class="small">Időtartam</span><span class="v">'+esc(a.start)+'–'+endOf(a)+' · '+durTxt(a.dur)+'</span></div>'+
     '<div class="card fact"><span class="small">Kapott összeg</span><span class="v money">'+money(a.amount)+'</span></div><div class="card fact"><span class="small">Fizetés</span><span class="v">'+payTxt+(a.price!=null&&a.amount!=null&&+a.price!==+a.amount?'<br><span class="small">megbeszélt: '+money(a.price)+'</span>':'')+'</span></div></div>';
+  if(a.debt>0)h+='<div class="card debtcard"><div class="mid"><span class="small debt" style="font-size:13px;font-weight:600">Még tartozik</span><span class="big debt">'+money(a.debt)+'</span></div><button class="btn" data-act="debt-paid" data-id="'+esc(a.id)+'">Kifizette</button></div>';
   if(a.note)h+='<section class="sec"><h2>Megjegyzés</h2><div class="card note">'+esc(a.note)+'</div></section>';
   if(prev.length)h+='<section class="sec"><h2>Korábbi tetoválásai nálad</h2>'+prev.map(function(x){var dd=pd(x.date);return '<button class="card prev" data-act="prev-tat" data-id="'+esc(x.id)+'"><span class="adate" aria-hidden="true"><b>'+dd.getDate()+'</b>'+MSH[dd.getMonth()]+'</span><span class="mid"><span class="n" style="font-size:14px">'+esc(descOf(x)||'Tetoválás')+'</span><span class="small">'+fmtFull(x.date)+'</span></span><span class="n" style="font-size:14px">'+money(x.amount)+'</span></button>';}).join('')+'</section>';
   h+='<div class="dact"><button class="btn" data-act="new-for">Új időpont neki</button><button class="btn ghost" data-act="d-edit">Szerkesztés</button></div></div></div>';
@@ -727,6 +783,12 @@ document.addEventListener('click',function(e){
     case 'dp-day': st.draft.date=t.getAttribute('data-d');st.draft.pickOpen=false;renderDT();break;
     case 'pay': st.draft.pay=+t.getAttribute('data-v');$('#payChips').innerHTML=payChips();break;
     case 'save-done': saveDone();break;
+    case 'debt-toggle':
+      st.draft.debtOn=!st.draft.debtOn;
+      if(st.draft.debtOn&&!st.draft.debt){var pr=S.byId[st.draft.id]&&S.byId[st.draft.id].price,am=numOrNull(st.draft.amount);if(pr!=null&&am!=null&&pr-am>0)st.draft.debt=String(Math.round((pr-am)*100)/100).replace('.',',');}
+      $('#debtBox').innerHTML=debtBoxHTML();if(st.draft.debtOn){var dIn=$('#debtIn');if(dIn)dIn.focus();}break;
+    case 'debts': S.sheet={kind:'debts'};renderSheet();break;
+    case 'debt-paid': markPaid(t.getAttribute('data-id'));break;
     case 'delete': k=st.draft.id;confirmBox('Biztosan törlöd ezt az időpontot?','Törlés',function(){delAppt(k).then(function(){if(S.selId===k)S.selId=null;closeSheet();toast('Időpont törölve.');},function(){toast('Nem sikerült törölni.');});});break;
     case 'c-no': confirmFn=null;$('#ovl').innerHTML='';break;
     case 'c-yes': var f=confirmFn;confirmFn=null;$('#ovl').innerHTML='';if(f)f();break;
