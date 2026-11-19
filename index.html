@@ -63,6 +63,7 @@ a{color:var(--act)}
 .pill{font-size:12px;background:var(--b1);padding:5px 9px;border-radius:10px;white-space:nowrap;flex-shrink:0}
 .pill.warn{background:#3A2A12;color:#F0C674}
 .small.debt,.debt{color:#F0C674}
+.sdebt{width:100%;background:#3A2A12;border-color:#6B5320;color:#F0C674;cursor:pointer;text-align:left;font:inherit}
 .debtline{margin:8px 16px 0;padding:0 16px;min-height:44px;border-radius:12px;background:#3A2A12;border:0;color:#F0C674;display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 14px Inter,sans-serif;cursor:pointer;flex-shrink:0}
 .debtline .dv{display:flex;align-items:center;gap:2px;font-family:Oswald,sans-serif;font-size:17px}
 .switch{width:52px;height:32px;border-radius:16px;border:0;padding:3px;cursor:pointer;display:flex;justify-content:flex-start;background:#3A3530;flex-shrink:0}
@@ -309,7 +310,7 @@ var IC={
 var S={raw:{},list:[],byId:{},byDay:{},ready:false,fail:'',view:'cal',wmode:'week',sel:todayK(),cursor:null,selId:null,sheet:null,archQ:'',archF:0,busy:false,lastBackup:0,hideInstall:false};
 S.cursor=new Date();S.cursor=new Date(S.cursor.getFullYear(),S.cursor.getMonth(),1);
 var drag=null, suppressClick=false, pendingRender=false, confirmFn=null, pendingReload=false, reloading=false;
-var APP_VERSION='5';
+var APP_VERSION='6';
 
 var isWide=function(){return window.innerWidth>=760&&window.innerHeight>=600;};
 var showPanel=function(){return window.innerWidth>=1100;};
@@ -489,10 +490,11 @@ function phoneHTML(){
 }
 
 /* ---------- wide ---------- */
+function sideDebt(){var l=openDebts();if(!l.length)return '';return '<button class="card stat sdebt" data-act="debts"><span style="font-size:13px">'+l.length+' tartozás</span><span class="v money">'+money(debtSum(l))+'</span></button>';}
 function sideHTML(){
   var s=monthStats(),n=(S.byDay[todayK()]||[]).length;
   return '<aside class="side"><div class="logo">caliber_ink_studio</div>'+monthHTML(true)+
-    '<div style="display:flex;flex-direction:column;gap:8px"><div class="card stat"><span class="small" style="font-size:13px">Ma</span><span class="v">'+n+' időpont</span></div><div class="card stat"><span class="small" style="font-size:13px">'+s.label+'</span><span class="v money">'+money(s.sum)+'</span></div></div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px"><div class="card stat"><span class="small" style="font-size:13px">Ma</span><span class="v">'+n+' időpont</span></div><div class="card stat"><span class="small" style="font-size:13px">'+s.label+'</span><span class="v money">'+money(s.sum)+'</span></div>'+sideDebt()+'</div>'+
     '<nav class="snav" aria-label="Fő menü"><button class="'+(S.view==='cal'?'on':'')+'" data-act="go-cal">'+IC.cal20+'Naptár</button><button class="'+(S.view==='arch'?'on':'')+'" data-act="go-arch">'+IC.grid20+'Archívum</button><button data-act="backup">'+IC.save20+'Biztonsági mentés</button></nav>'+
     '<button class="btn" data-act="new">'+IC.plus20+'Új időpont</button></aside>';
 }
@@ -533,7 +535,7 @@ function rpanelHTML(){
   if(!a)return '<aside class="rpanel"><div class="sech" style="margin:0">Időpont</div><p style="margin:0;color:var(--mu);font-size:15px;line-height:1.5">Koppints egy időpontra a naptárban, vagy egy üres helyre, ha újat vennél fel.</p>'+tip+'</aside>';
   var past=isPast(a);
   var h='<aside class="rpanel"><div class="sech" style="margin:0">'+(a.done?'Kész tetoválás':past?'Lezáratlan időpont':'Következő időpont')+'</div><div style="display:flex;flex-direction:column;gap:4px"><h2>'+esc(a.name||'Névtelen')+'</h2><div style="font-size:15px;color:var(--mu)">'+esc(descOf(a)||'—')+'</div>'+(a.contact?'<div class="small" style="font-size:13px">'+esc(a.contact)+'</div>':'')+'</div>'+
-    '<div class="card"><div class="kv"><span class="k">Időpont</span><span class="v">'+fmtShort(a.date)+' '+esc(a.start)+'–'+endOf(a)+'</span></div><div class="kv"><span class="k">Időtartam</span><span class="v">'+durTxt(a.dur)+'</span></div><div class="kv"><span class="k">'+(a.done?'Kapott összeg':'Végösszeg')+'</span><span class="v">'+money(a.done?a.amount:a.price)+'</span></div></div>';
+    '<div class="card"><div class="kv"><span class="k">Időpont</span><span class="v">'+fmtShort(a.date)+' '+esc(a.start)+'–'+endOf(a)+'</span></div><div class="kv"><span class="k">Időtartam</span><span class="v">'+durTxt(a.dur)+'</span></div><div class="kv"><span class="k">'+(a.done?'Kapott összeg':'Végösszeg')+'</span><span class="v">'+money(a.done?a.amount:a.price)+'</span></div>'+(a.debt>0?'<div class="kv"><span class="k debt">Tartozik</span><span class="v debt">'+money(a.debt)+'</span></div>':'')+'</div>'+(a.debt>0?'<button class="btn ghost" data-act="debt-paid" data-id="'+esc(a.id)+'">Kifizette</button>':'');
   if(a.done)h+='<button class="btn" data-act="p-detail">Részletek</button>';
   else h+='<button class="btn" data-act="p-done">'+IC.check+'Kész – összeg</button><div class="btnrow"><button class="btn ghost" data-act="p-edit">Áthelyezés</button><button class="btn ghost" data-act="p-edit">Szerkesztés</button></div>';
   return h+tip+'</aside>';
@@ -608,7 +610,8 @@ function editHTML(){
     '<section class="sec"><h2>Tetoválás</h2><div class="group">'+
       '<label class="col"><span class="lb">Motívum, leírás</span><textarea data-f="motif" rows="2" placeholder="pl. rózsa, fekete-szürke, realisztikus">'+esc(d.motif)+'</textarea></label>'+
       '<label class="row"><span class="lb">Testrész</span><input data-f="part" value="'+esc(d.part)+'" placeholder="pl. bal alkar" autocomplete="off"></label>'+
-      '<label class="row"><span class="lb">Végösszeg</span><input data-f="price" value="'+esc(d.price)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="unit">€</span></label></div></section>'+
+      '<label class="row"><span class="lb">Végösszeg</span><input data-f="price" value="'+esc(d.price)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="unit">€</span></label></div>'+
+      '<div class="group" id="debtBox">'+debtBoxHTML()+'</div><p class="hint">Ha már letetováltad, de még nem fizetett ki mindent, kapcsold be, és írd be, mennyivel tartozik. Hetente egyszer szól az app, amíg nincs kifizetve.</p></section>'+
     '<button class="btn" data-act="edit-to-done">'+IC.check+(d.done?'Összeg és megjegyzés':'Kész – összeg és megjegyzés')+'</button>';
   if(d.id)h+='<button class="btn danger" data-act="delete">Időpont törlése</button>';
   else h+='<button class="btn ghost" data-act="save-edit">Mentés</button>';
@@ -616,8 +619,8 @@ function editHTML(){
 }
 function openEdit(id,preset){
   var a=id&&S.byId[id];
-  var draft=a?{id:id,name:a.name,contact:a.contact,date:a.date,start:a.start,dur:a.dur,motif:a.motif,part:a.part,price:a.price==null?'':String(a.price).replace('.',','),done:a.done}
-    :Object.assign({id:null,name:'',contact:'',date:S.sel,start:'10:00',dur:2,motif:'',part:'',price:'',done:false},preset||{});
+  var draft=a?{id:id,name:a.name,contact:a.contact,date:a.date,start:a.start,dur:a.dur,motif:a.motif,part:a.part,price:a.price==null?'':String(a.price).replace('.',','),done:a.done,debtOn:a.debt>0,debt:a.debt>0?String(a.debt).replace('.',','):''}
+    :Object.assign({id:null,name:'',contact:'',date:S.sel,start:'10:00',dur:2,motif:'',part:'',price:'',done:false,debtOn:false,debt:''},preset||{});
   S.sheet={kind:'edit',draft:draft};renderSheet();
 }
 function saveEdit(thenDone){
@@ -627,8 +630,11 @@ function saveEdit(thenDone){
   if(!d.name.trim()){toast('Add meg az ügyfél nevét.');var i=document.querySelector('[data-f="name"]');if(i)i.focus();return;}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.date)){toast('Add meg a dátumot.');return;}
   if(!/^\d{1,2}:\d{2}/.test(d.start)){toast('Add meg a kezdés idejét.');return;}
+  var debtE=d.debtOn?numOrNull(d.debt):null;
+  if(d.debtOn&&!(debtE>0)){toast('Írd be, mennyivel tartozik.');var de=$('#debtIn');if(de)de.focus();return;}
   var base=d.id&&S.raw[d.id]?Object.assign({},S.raw[d.id]):{id:newId(),done:false,amount:null,pay:null,note:'',createdAt:Date.now()};
-  Object.assign(base,{name:d.name.trim(),contact:d.contact.trim(),date:d.date,start:d.start.slice(0,5),dur:+d.dur||2,motif:d.motif.trim(),part:d.part.trim(),price:numOrNull(d.price)});delete base.deposit;
+  Object.assign(base,{name:d.name.trim(),contact:d.contact.trim(),date:d.date,start:d.start.slice(0,5),dur:+d.dur||2,motif:d.motif.trim(),part:d.part.trim(),price:numOrNull(d.price),debt:debtE});delete base.deposit;
+  if(debtE>0&&!S.lastDebtNotice){S.lastDebtNotice=Date.now();setMeta('lastDebtNotice',S.lastDebtNotice).catch(function(){});}
   S.busy=true;
   putAppt(base).then(function(){
     S.busy=false;var dd=pd(base.date);S.sel=base.date;S.cursor=new Date(dd.getFullYear(),dd.getMonth(),1);S.selId=base.id;
@@ -785,7 +791,7 @@ document.addEventListener('click',function(e){
     case 'save-done': saveDone();break;
     case 'debt-toggle':
       st.draft.debtOn=!st.draft.debtOn;
-      if(st.draft.debtOn&&!st.draft.debt){var pr=S.byId[st.draft.id]&&S.byId[st.draft.id].price,am=numOrNull(st.draft.amount);if(pr!=null&&am!=null&&pr-am>0)st.draft.debt=String(Math.round((pr-am)*100)/100).replace('.',',');}
+      if(st.draft.debtOn&&!st.draft.debt){var a0=S.byId[st.draft.id]||{},isE=st.kind==='edit',pr=isE?numOrNull(st.draft.price):a0.price,am=isE?(+a0.amount||0):numOrNull(st.draft.amount);if(pr!=null&&am!=null&&pr-am>0)st.draft.debt=String(Math.round((pr-am)*100)/100).replace('.',',');}
       $('#debtBox').innerHTML=debtBoxHTML();if(st.draft.debtOn){var dIn=$('#debtIn');if(dIn)dIn.focus();}break;
     case 'debts': S.sheet={kind:'debts'};renderSheet();break;
     case 'debt-paid': markPaid(t.getAttribute('data-id'));break;
