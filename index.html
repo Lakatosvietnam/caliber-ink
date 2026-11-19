@@ -296,7 +296,7 @@ var IC={
 var S={raw:{},list:[],byId:{},byDay:{},ready:false,fail:'',view:'cal',wmode:'week',sel:todayK(),cursor:null,selId:null,sheet:null,archQ:'',archF:0,busy:false,lastBackup:0,hideInstall:false};
 S.cursor=new Date();S.cursor=new Date(S.cursor.getFullYear(),S.cursor.getMonth(),1);
 var drag=null, suppressClick=false, pendingRender=false, confirmFn=null, pendingReload=false, reloading=false;
-var APP_VERSION='3';
+var APP_VERSION='4';
 
 var isWide=function(){return window.innerWidth>=760&&window.innerHeight>=600;};
 var showPanel=function(){return window.innerWidth>=1100;};
@@ -329,7 +329,7 @@ function putMany(list){return tx('appts','readwrite',function(s){list.forEach(fu
 function setMeta(k,v){return tx('meta','readwrite',function(s){return s.put(v,k);});}
 function getMeta(k){return tx('meta','readonly',function(s){return s.get(k);});}
 
-function norm(d){return {id:d.id,name:d.name||'',contact:d.contact||'',date:d.date||'',start:d.start||'00:00',dur:+d.dur||1,motif:d.motif||'',part:d.part||'',deposit:d.deposit==null?null:d.deposit,done:!!d.done,amount:d.amount==null?null:d.amount,pay:d.pay==null?null:d.pay,note:d.note||''};}
+function norm(d){return {id:d.id,name:d.name||'',contact:d.contact||'',date:d.date||'',start:d.start||'00:00',dur:+d.dur||1,motif:d.motif||'',part:d.part||'',price:d.price!=null?d.price:(d.deposit==null?null:d.deposit),done:!!d.done,amount:d.amount==null?null:d.amount,pay:d.pay==null?null:d.pay,note:d.note||''};}
 function refresh(){
   var list=Object.keys(S.raw).map(function(k){return norm(S.raw[k]);}).filter(function(a){return a.date;});
   list.sort(function(a,b){var x=a.date+a.start,y=b.date+b.start;return x<y?-1:x>y?1:0;});
@@ -488,7 +488,7 @@ function rpanelHTML(){
   if(!a)return '<aside class="rpanel"><div class="sech" style="margin:0">Időpont</div><p style="margin:0;color:var(--mu);font-size:15px;line-height:1.5">Koppints egy időpontra a naptárban, vagy egy üres helyre, ha újat vennél fel.</p>'+tip+'</aside>';
   var past=isPast(a);
   var h='<aside class="rpanel"><div class="sech" style="margin:0">'+(a.done?'Kész tetoválás':past?'Lezáratlan időpont':'Következő időpont')+'</div><div style="display:flex;flex-direction:column;gap:4px"><h2>'+esc(a.name||'Névtelen')+'</h2><div style="font-size:15px;color:var(--mu)">'+esc(descOf(a)||'—')+'</div>'+(a.contact?'<div class="small" style="font-size:13px">'+esc(a.contact)+'</div>':'')+'</div>'+
-    '<div class="card"><div class="kv"><span class="k">Időpont</span><span class="v">'+fmtShort(a.date)+' '+esc(a.start)+'–'+endOf(a)+'</span></div><div class="kv"><span class="k">Időtartam</span><span class="v">'+durTxt(a.dur)+'</span></div><div class="kv"><span class="k">'+(a.done?'Kapott összeg':'Előleg')+'</span><span class="v">'+money(a.done?a.amount:a.deposit)+'</span></div></div>';
+    '<div class="card"><div class="kv"><span class="k">Időpont</span><span class="v">'+fmtShort(a.date)+' '+esc(a.start)+'–'+endOf(a)+'</span></div><div class="kv"><span class="k">Időtartam</span><span class="v">'+durTxt(a.dur)+'</span></div><div class="kv"><span class="k">'+(a.done?'Kapott összeg':'Végösszeg')+'</span><span class="v">'+money(a.done?a.amount:a.price)+'</span></div></div>';
   if(a.done)h+='<button class="btn" data-act="p-detail">Részletek</button>';
   else h+='<button class="btn" data-act="p-done">'+IC.check+'Kész – összeg</button><div class="btnrow"><button class="btn ghost" data-act="p-edit">Áthelyezés</button><button class="btn ghost" data-act="p-edit">Szerkesztés</button></div>';
   return h+tip+'</aside>';
@@ -563,7 +563,7 @@ function editHTML(){
     '<section class="sec"><h2>Tetoválás</h2><div class="group">'+
       '<label class="col"><span class="lb">Motívum, leírás</span><textarea data-f="motif" rows="2" placeholder="pl. rózsa, fekete-szürke, realisztikus">'+esc(d.motif)+'</textarea></label>'+
       '<label class="row"><span class="lb">Testrész</span><input data-f="part" value="'+esc(d.part)+'" placeholder="pl. bal alkar" autocomplete="off"></label>'+
-      '<label class="row"><span class="lb">Előleg</span><input data-f="deposit" value="'+esc(d.deposit)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="unit">€</span></label></div></section>'+
+      '<label class="row"><span class="lb">Végösszeg</span><input data-f="price" value="'+esc(d.price)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="unit">€</span></label></div></section>'+
     '<button class="btn" data-act="edit-to-done">'+IC.check+(d.done?'Összeg és megjegyzés':'Kész – összeg és megjegyzés')+'</button>';
   if(d.id)h+='<button class="btn danger" data-act="delete">Időpont törlése</button>';
   else h+='<button class="btn ghost" data-act="save-edit">Mentés</button>';
@@ -571,8 +571,8 @@ function editHTML(){
 }
 function openEdit(id,preset){
   var a=id&&S.byId[id];
-  var draft=a?{id:id,name:a.name,contact:a.contact,date:a.date,start:a.start,dur:a.dur,motif:a.motif,part:a.part,deposit:a.deposit==null?'':String(a.deposit).replace('.',','),done:a.done}
-    :Object.assign({id:null,name:'',contact:'',date:S.sel,start:'10:00',dur:2,motif:'',part:'',deposit:'',done:false},preset||{});
+  var draft=a?{id:id,name:a.name,contact:a.contact,date:a.date,start:a.start,dur:a.dur,motif:a.motif,part:a.part,price:a.price==null?'':String(a.price).replace('.',','),done:a.done}
+    :Object.assign({id:null,name:'',contact:'',date:S.sel,start:'10:00',dur:2,motif:'',part:'',price:'',done:false},preset||{});
   S.sheet={kind:'edit',draft:draft};renderSheet();
 }
 function saveEdit(thenDone){
@@ -583,7 +583,7 @@ function saveEdit(thenDone){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.date)){toast('Add meg a dátumot.');return;}
   if(!/^\d{1,2}:\d{2}/.test(d.start)){toast('Add meg a kezdés idejét.');return;}
   var base=d.id&&S.raw[d.id]?Object.assign({},S.raw[d.id]):{id:newId(),done:false,amount:null,pay:null,note:'',createdAt:Date.now()};
-  Object.assign(base,{name:d.name.trim(),contact:d.contact.trim(),date:d.date,start:d.start.slice(0,5),dur:+d.dur||2,motif:d.motif.trim(),part:d.part.trim(),deposit:numOrNull(d.deposit)});
+  Object.assign(base,{name:d.name.trim(),contact:d.contact.trim(),date:d.date,start:d.start.slice(0,5),dur:+d.dur||2,motif:d.motif.trim(),part:d.part.trim(),price:numOrNull(d.price)});delete base.deposit;
   S.busy=true;
   putAppt(base).then(function(){
     S.busy=false;var dd=pd(base.date);S.sel=base.date;S.cursor=new Date(dd.getFullYear(),dd.getMonth(),1);S.selId=base.id;
@@ -598,15 +598,16 @@ function doneHTML(){
   var d=S.sheet.draft,a=S.byId[d.id]||{};
   return '<div class="panel" role="dialog" aria-modal="true" aria-label="Tetoválás kész"><div class="shead"><button class="hbtn" data-act="close">'+IC.left+'Vissza</button><div class="ttl">Tetoválás kész</div><span class="hbtn"></span></div><div class="sbody">'+
     '<div class="card client"><div class="av" aria-hidden="true">'+esc(initials(a.name))+'</div><div class="mid"><span class="n" style="font-size:16px">'+esc(a.name||'Névtelen')+'</span><span class="d">'+esc(descOf(a)||'—')+'</span><span class="d">'+(a.date?fmtFull(a.date)+' · '+esc(a.start)+'–'+endOf(a):'')+'</span></div><button class="linkbtn" data-act="done-to-edit">Adatok</button></div>'+
-    '<section class="sec"><h2>Kapott összeg</h2><div class="card amountbox"><label class="amount"><span class="sr">Kapott összeg euróban, az előleggel együtt</span><input data-f="amount" value="'+esc(d.amount)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="eur">€</span></label>'+
-      '<div class="small" style="font-size:13px">'+(a.deposit!=null?'Az előleggel együtt. Előleg (már megkapva): '+money(a.deposit):'A teljes összeg, amit kaptál.')+'</div>'+
+    '<section class="sec"><h2>Kapott összeg</h2><div class="card amountbox"><label class="amount"><span class="sr">Kapott összeg euróban</span><input data-f="amount" value="'+esc(d.amount)+'" inputmode="decimal" placeholder="0" autocomplete="off"><span class="eur">€</span></label>'+
+      '<div class="small" style="font-size:13px">'+(a.price!=null?'Megbeszélt végösszeg: '+money(a.price):'A teljes összeg, amit kaptál.')+'</div>'+
       '<div class="chips eq" id="payChips" role="group" aria-label="Fizetés módja">'+payChips()+'</div></div></section>'+
     '<section class="sec"><h2>Megjegyzés (nem kötelező)</h2><label class="card col" style="display:block"><span class="sr">Megjegyzés</span><textarea data-f="note" rows="5" placeholder="pl. festékek, tűk, utókezelés, következő ülés…">'+esc(d.note)+'</textarea></label></section>'+
     '<button class="btn" data-act="save-done">Mentés</button></div></div>';
 }
 function openDone(id){
   var a=S.byId[id]||{};
-  S.sheet={kind:'done',draft:{id:id,amount:a.amount==null?'':String(a.amount).replace('.',','),pay:a.pay==null?0:a.pay,note:a.note||''}};
+  var amt=a.amount!=null?a.amount:a.price;
+  S.sheet={kind:'done',draft:{id:id,amount:amt==null?'':String(amt).replace('.',','),pay:a.pay==null?0:a.pay,note:a.note||''}};
   renderSheet();
 }
 function saveDone(){
@@ -629,7 +630,7 @@ function detailHTML(){
   var h='<div class="panel" role="dialog" aria-modal="true" aria-label="Tetoválás részletei">'+head+'<div class="sbody">'+
     '<div class="dtitle"><h1>'+esc(a.name||'Névtelen')+'</h1><div style="font-size:15px;color:var(--mu)">'+esc(descOf(a)||'—')+'</div>'+(a.contact?'<div class="small" style="font-size:13px">'+esc(a.contact)+'</div>':'')+'</div>'+
     '<div class="facts"><div class="card fact"><span class="small">Dátum</span><span class="v">'+fmtFull(a.date)+'</span></div><div class="card fact"><span class="small">Időtartam</span><span class="v">'+esc(a.start)+'–'+endOf(a)+' · '+durTxt(a.dur)+'</span></div>'+
-    '<div class="card fact"><span class="small">Kapott összeg</span><span class="v money">'+money(a.amount)+'</span></div><div class="card fact"><span class="small">Fizetés</span><span class="v">'+payTxt+(a.deposit!=null?'<br><span class="small">előleg '+money(a.deposit)+'</span>':'')+'</span></div></div>';
+    '<div class="card fact"><span class="small">Kapott összeg</span><span class="v money">'+money(a.amount)+'</span></div><div class="card fact"><span class="small">Fizetés</span><span class="v">'+payTxt+(a.price!=null&&a.amount!=null&&+a.price!==+a.amount?'<br><span class="small">megbeszélt: '+money(a.price)+'</span>':'')+'</span></div></div>';
   if(a.note)h+='<section class="sec"><h2>Megjegyzés</h2><div class="card note">'+esc(a.note)+'</div></section>';
   if(prev.length)h+='<section class="sec"><h2>Korábbi tetoválásai nálad</h2>'+prev.map(function(x){var dd=pd(x.date);return '<button class="card prev" data-act="prev-tat" data-id="'+esc(x.id)+'"><span class="adate" aria-hidden="true"><b>'+dd.getDate()+'</b>'+MSH[dd.getMonth()]+'</span><span class="mid"><span class="n" style="font-size:14px">'+esc(descOf(x)||'Tetoválás')+'</span><span class="small">'+fmtFull(x.date)+'</span></span><span class="n" style="font-size:14px">'+money(x.amount)+'</span></button>';}).join('')+'</section>';
   h+='<div class="dact"><button class="btn" data-act="new-for">Új időpont neki</button><button class="btn ghost" data-act="d-edit">Szerkesztés</button></div></div></div>';
