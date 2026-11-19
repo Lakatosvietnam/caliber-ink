@@ -1,6 +1,6 @@
 // Offline mód: az app fájljait eltárolja, hogy net nélkül is induljon.
 // Az adatok (időpontok) nem itt vannak, hanem a készülék IndexedDB tárhelyén.
-const CACHE = 'caliber-ink-v1';
+const CACHE = 'caliber-ink-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
