@@ -1,10 +1,10 @@
 // Offline mód: az app fájljait eltárolja, hogy net nélkül is induljon.
 // Az adatok (időpontok) nem itt vannak, hanem a készülék IndexedDB tárhelyén.
-const CACHE = 'caliber-ink-v2';
+const CACHE = 'caliber-ink-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
@@ -20,12 +20,15 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin === self.location.origin) {
-    // Előbb a hálózat (így megjönnek a frissítések), ha nincs net, a tárolt változat.
+    // Mindig a legfrissebb változatot kéri le (böngésző-gyorsítótár nélkül);
+    // ha nincs net, a tárolt változat indul.
     e.respondWith(
-      fetch(e.request)
+      fetch(e.request.url, { cache: 'no-store' })
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copy));
+          }
           return res;
         })
         .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')))

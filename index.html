@@ -295,7 +295,8 @@ var IC={
 
 var S={raw:{},list:[],byId:{},byDay:{},ready:false,fail:'',view:'cal',wmode:'week',sel:todayK(),cursor:null,selId:null,sheet:null,archQ:'',archF:0,busy:false,lastBackup:0,hideInstall:false};
 S.cursor=new Date();S.cursor=new Date(S.cursor.getFullYear(),S.cursor.getMonth(),1);
-var drag=null, suppressClick=false, pendingRender=false, confirmFn=null;
+var drag=null, suppressClick=false, pendingRender=false, confirmFn=null, pendingReload=false, reloading=false;
+var APP_VERSION='3';
 
 var isWide=function(){return window.innerWidth>=760&&window.innerHeight>=600;};
 var showPanel=function(){return window.innerWidth>=1100;};
@@ -351,7 +352,18 @@ function init(){
     S.lastBackup=+r[1]||0;S.ready=true;refresh();
   }).catch(function(){S.fail='nostore';S.ready=true;renderBase();});
   if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(function(){});}
-  if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(function(){});}
+  if('serviceWorker' in navigator&&location.protocol==='https:'){
+    var hadCtrl=!!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(function(reg){
+      reg.update().catch(function(){});
+      document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')reg.update().catch(function(){});});
+    }).catch(function(){});
+    navigator.serviceWorker.addEventListener('controllerchange',function(){
+      if(!hadCtrl||reloading)return;
+      if(S.sheet||drag){pendingReload=true;return;}
+      reloading=true;location.reload();
+    });
+  }
 }
 
 /* ---------- banners ---------- */
@@ -510,7 +522,7 @@ function renderSheet(){
   var html=st.kind==='edit'?editHTML():st.kind==='done'?doneHTML():st.kind==='backup'?backupHTML():detailHTML();
   el.innerHTML='<div class="sheet">'+html+'</div>';
 }
-function closeSheet(){S.sheet=null;renderSheet();}
+function closeSheet(){S.sheet=null;renderSheet();if(pendingReload&&!reloading){reloading=true;location.reload();}}
 
 /* ---------- edit sheet ---------- */
 function durChips(){var d=S.sheet.draft;return DURS.map(function(x){var on=+d.dur===x[0];return '<button class="chip'+(on?' on':'')+'" data-act="dur" data-v="'+x[0]+'" aria-pressed="'+on+'">'+x[1]+'</button>';}).join('');}
@@ -633,6 +645,7 @@ function backupHTML(){
     '<div class="card"><div class="kv"><span class="k">Időpontok</span><span class="v">'+S.list.length+' db</span></div><div class="kv"><span class="k">Kész tetoválások</span><span class="v">'+S.list.filter(function(a){return a.done;}).length+' db</span></div><div class="kv"><span class="k">Utolsó mentés</span><span class="v">'+lastTxt+'</span></div></div>'+
     '<section class="sec"><button class="btn" data-act="export">'+IC.save20+'Biztonsági mentés készítése</button><p class="hint">A felugró menüben válaszd a „Mentés a Fájlokba” lehetőséget, majd az iCloud Drive mappát.</p></section>'+
     '<section class="sec"><label class="btn ghost">'+IC.upload+'Visszatöltés mentésből<input type="file" id="impIn" accept=".json,application/json" aria-label="Mentésfájl kiválasztása"></label><p class="hint">Új telefonon vagy az iPaden: válaszd ki a mentésfájlt, és minden időpont visszakerül. A meglévők megmaradnak.</p></section>'+
+    '<p class="hint" style="text-align:center">App verzió: '+APP_VERSION+'</p>'+
     '</div></div>';
 }
 function exportBackup(){
